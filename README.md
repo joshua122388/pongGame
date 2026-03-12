@@ -1,4 +1,4 @@
-### Avance Projecto 09/11/2025 - Laboratiorio#5
+### Proyecto
 
 # Ping Pong - Juego Clásico de Pong
 
