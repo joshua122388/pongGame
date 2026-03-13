@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.pingpong.ui.theme.PixelFontFamily
 
 @Composable
 fun PlayerLabels(modifier: Modifier = Modifier, isTwoPlayer: Boolean = false) {
@@ -20,12 +21,13 @@ fun PlayerLabels(modifier: Modifier = Modifier, isTwoPlayer: Boolean = false) {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text = "Jugador 1", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+        Text(text = "Jugador 1", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium, fontFamily = PixelFontFamily)
         Text(
             text = if (isTwoPlayer) "Jugador 2" else "CPU",
             color = Color.White,
             fontSize = 16.sp,
-            fontWeight = FontWeight.Medium
+            fontWeight = FontWeight.Medium,
+            fontFamily = PixelFontFamily
         )
     }
 }

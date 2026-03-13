@@ -5,6 +5,7 @@ import androidx.compose.ui.graphics.Color
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sqrt
 import kotlin.random.Random
 import com.example.pingpong.model.Difficulty
 
@@ -56,7 +57,14 @@ class GameState(
     private val maxAcceleration: Float = 2.0f
 
     private val baseBallSpeed: Float
-        get() = min(boardWidth, boardHeight) * 0.6f // px por segundo
+        get() = min(boardWidth, boardHeight) * BALL_SPEED_BOARD_RATIO
+
+    companion object {
+        const val BALL_SPEED_BOARD_RATIO = 0.6f
+        const val INITIAL_VX_MIN_RATIO = 0.7f
+        const val INITIAL_VY_RANGE_RATIO = 0.6f
+        const val MIN_BALL_SPEED_PX = 50f
+    }
 
     // --- Estado de IA (CPU controla la paleta derecha) ---
     private data class AiParams(val speed: Float, val reactionS: Float, val errorPx: Float)
@@ -130,8 +138,20 @@ class GameState(
         if (aiTimer <= 0f) {
             val goingRight = ball.velocity.x > 0f
             val desiredCenterY = if (goingRight) {
-                val err = (Random.nextFloat() * 2f - 1f) * params.errorPx // [-err, +err]
-                (ball.center.y + err)
+                // Predecir el punto de intercepción en lugar de seguir la Y actual
+                val rightPaddleX = rightPaddle.x + rightPaddle.width / 2f
+                val timeToReach = if (ball.velocity.x != 0f)
+                    (rightPaddleX - ball.center.x) / ball.velocity.x
+                else 0f
+                var predictedY = ball.center.y + ball.velocity.y * timeToReach
+                // Reflejar la Y predicha en las paredes para escenarios de múltiples rebotes
+                if (boardHeight > 0f) {
+                    predictedY = predictedY % (2f * boardHeight)
+                    if (predictedY < 0f) predictedY += 2f * boardHeight
+                    if (predictedY > boardHeight) predictedY = 2f * boardHeight - predictedY
+                }
+                val err = (Random.nextFloat() * 2f - 1f) * params.errorPx
+                predictedY + err
             } else {
                 boardHeight / 2f
             }
@@ -192,8 +212,9 @@ class GameState(
                 val rel = ((newCenter.y - lp.y) / lp.height - 0.5f) * 2f // -1..1
                 // Aceleración: cada golpe incrementa la velocidad
                 accelerationMultiplier = (accelerationMultiplier + accelerationPerHit).coerceAtMost(maxAcceleration)
-                val speed = max(50f, baseBallSpeed * accelerationMultiplier)
-                ball.velocity = Offset(abs(speed), rel * speed)
+                val speed = max(MIN_BALL_SPEED_PX, baseBallSpeed * accelerationMultiplier)
+                val mag = sqrt(1f + rel * rel)
+                ball.velocity = Offset(abs(speed) / mag, rel * speed / mag)
             }
         } else if (ball.velocity.x > 0) { // Paleta derecha
             val paddleLeft = rp.x
@@ -204,8 +225,9 @@ class GameState(
                 newCenter = newCenter.copy(x = paddleLeft - ball.radius)
                 val rel = ((newCenter.y - rp.y) / rp.height - 0.5f) * 2f // -1..1
                 accelerationMultiplier = (accelerationMultiplier + accelerationPerHit).coerceAtMost(maxAcceleration)
-                val speed = max(50f, baseBallSpeed * accelerationMultiplier)
-                ball.velocity = Offset(-abs(speed), rel * speed)
+                val speed = max(MIN_BALL_SPEED_PX, baseBallSpeed * accelerationMultiplier)
+                val mag = sqrt(1f + rel * rel)
+                ball.velocity = Offset(-abs(speed) / mag, rel * speed / mag)
             }
         }
 
@@ -252,13 +274,13 @@ class GameState(
     private fun randomInitialVelocity(preferRight: Boolean? = null): Offset {
         val speed = baseBallSpeed
         // Ángulo aleatorio pero evitar extremos demasiado horizontales/verticales.
-        val vy = (Random.nextFloat() - 0.5f) * speed * 0.6f // ~[-0.3, 0.3] * speed
+        val vy = (Random.nextFloat() - 0.5f) * speed * INITIAL_VY_RANGE_RATIO
         val dir = when (preferRight) {
             true -> 1f
             false -> -1f
             null -> if (Random.nextBoolean()) 1f else -1f
         }
-        val vx = dir * max(speed * 0.7f, abs(speed - abs(vy))) // mantener mayormente horizontal
+        val vx = dir * max(speed * INITIAL_VX_MIN_RATIO, abs(speed - abs(vy))) // mantener mayormente horizontal
         return Offset(vx, vy)
     }
 }

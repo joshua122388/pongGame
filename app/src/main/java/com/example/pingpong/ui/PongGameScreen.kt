@@ -2,10 +2,25 @@ package com.example.pingpong.ui
 
 import android.app.Activity
 import android.util.Log
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +37,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,6 +49,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -93,6 +110,19 @@ private fun PongBoard() {
     // En modo local la dificultad no es relevante; usamos MEDIUM por defecto
     val effectiveDifficulty =
         if (selectedGameMode == GameMode.LOCAL_MULTIPLAYER) Difficulty.MEDIUM else selectedDifficulty
+
+    // Congelar estado de fin de juego para que sobreviva la animación de salida
+    var frozenWinner by remember { mutableStateOf(Winner.NONE) }
+    var frozenLeftScore by remember { mutableStateOf(0) }
+    var frozenRightScore by remember { mutableStateOf(0) }
+    SideEffect {
+        val g = game
+        if (g != null && g.winner != Winner.NONE) {
+            frozenWinner = g.winner
+            frozenLeftScore = g.leftScore
+            frozenRightScore = g.rightScore
+        }
+    }
 
     // ── Inicialización del juego ──────────────────────────────────────────────
     LaunchedEffect(gameInitCounter, boardWidth, boardHeight) {
@@ -157,6 +187,9 @@ private fun PongBoard() {
     }
 
     // ── UI ───────────────────────────────────────────────────────────────────
+    // Read frameTick here so PongBoard itself recomposes every frame while the game
+    // is running, keeping all AnimatedVisibility `visible` conditions up-to-date.
+    @Suppress("UNUSED_VARIABLE") val tick = frameTick
     Box(modifier = Modifier.fillMaxSize()) {
 
         // ── Canvas: tablero ──────────────────────────────────────────────────
@@ -200,7 +233,7 @@ private fun PongBoard() {
             drawCircle(color = g.ball.color, radius = g.ball.radius, center = g.ball.center, style = Fill)
         }
 
-        // ── Áreas táctiles ───────────────────────────────────────────────────
+        // ── Áreas táctiles (fuera de AnimatedVisibility para que siempre se midan) ──
         if (started) {
             // Mitad izquierda → Jugador 1
             Box(
@@ -241,65 +274,94 @@ private fun PongBoard() {
         }
 
         // ── HUD durante el juego ─────────────────────────────────────────────
-        if (started) {
+        AnimatedVisibility(
+            visible = started && game != null,
+            enter = fadeIn(tween(350, delayMillis = 150)),
+            exit = fadeOut(tween(200))
+        ) {
             @Suppress("UNUSED_VARIABLE") val tick = frameTick
-            Column(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 4.dp)
-                    .fillMaxWidth()
-            ) {
-                PlayerLabels(isTwoPlayer = selectedGameMode == GameMode.LOCAL_MULTIPLAYER)
-                Scoreboard(
-                    p1Score = game?.leftScore ?: 0,
-                    p2Score = game?.rightScore ?: 0,
-                    maxScore = selectedMaxScore
-                )
-            }
+            Box(modifier = Modifier.fillMaxSize()) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 4.dp)
+                        .fillMaxWidth()
+                ) {
+                    PlayerLabels(isTwoPlayer = selectedGameMode == GameMode.LOCAL_MULTIPLAYER)
+                    Scoreboard(
+                        p1Score = game?.leftScore ?: 0,
+                        p2Score = game?.rightScore ?: 0,
+                        maxScore = selectedMaxScore,
+                        isTwoPlayer = selectedGameMode == GameMode.LOCAL_MULTIPLAYER
+                    )
+                }
 
-            // Botón Pausa (esquina superior izquierda, bajo el marcador)
-            OutlinedButton(
-                onClick = { isPaused = !isPaused },
-                border = BorderStroke(1.5.dp, Color.White),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = Color.Black.copy(alpha = 0.6f),
-                    contentColor = Color.White
-                ),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(top = 80.dp, start = 8.dp)
-            ) {
-                Text(
-                    text = if (isPaused) "▶" else "⏸",
-                    fontFamily = PixelFontFamily,
-                    fontSize = 16.sp
+                // Botón Pausa (esquina superior izquierda, bajo el marcador)
+                val pauseInteraction = remember { MutableInteractionSource() }
+                val isPausePressed by pauseInteraction.collectIsPressedAsState()
+                val pauseScale by animateFloatAsState(
+                    targetValue = if (isPausePressed) 0.94f else 1f,
+                    animationSpec = spring(stiffness = Spring.StiffnessHigh),
+                    label = "btnScale"
                 )
-            }
+                OutlinedButton(
+                    onClick = { isPaused = !isPaused },
+                    border = BorderStroke(1.5.dp, Color.White),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = Color.Black.copy(alpha = 0.6f),
+                        contentColor = Color.White
+                    ),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                    interactionSource = pauseInteraction,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(top = 80.dp, start = 8.dp)
+                        .graphicsLayer { scaleX = pauseScale; scaleY = pauseScale }
+                ) {
+                    Text(
+                        text = if (isPaused) "▶" else "⏸",
+                        fontFamily = PixelFontFamily,
+                        fontSize = 16.sp
+                    )
+                }
 
-            // Botón Salir (esquina inferior derecha)
-            OutlinedButton(
-                onClick = {
-                    started = false
-                    game = null
-                    isPaused = false
-                },
-                border = BorderStroke(1.5.dp, Color.White),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = Color.Black.copy(alpha = 0.6f),
-                    contentColor = Color.White
-                ),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(bottom = 16.dp, end = 16.dp)
-            ) {
-                Text(text = "Salir", fontFamily = PixelFontFamily, fontSize = 14.sp, letterSpacing = 1.sp)
+                // Botón Salir (esquina inferior derecha)
+                val exitInteraction = remember { MutableInteractionSource() }
+                val isExitPressed by exitInteraction.collectIsPressedAsState()
+                val exitScale by animateFloatAsState(
+                    targetValue = if (isExitPressed) 0.94f else 1f,
+                    animationSpec = spring(stiffness = Spring.StiffnessHigh),
+                    label = "btnScale"
+                )
+                OutlinedButton(
+                    onClick = {
+                        started = false
+                        game = null
+                        isPaused = false
+                    },
+                    border = BorderStroke(1.5.dp, Color.White),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = Color.Black.copy(alpha = 0.6f),
+                        contentColor = Color.White
+                    ),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    interactionSource = exitInteraction,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(bottom = 16.dp, end = 16.dp)
+                        .graphicsLayer { scaleX = exitScale; scaleY = exitScale }
+                ) {
+                    Text(text = "Salir", fontFamily = PixelFontFamily, fontSize = 14.sp, letterSpacing = 1.sp)
+                }
             }
         }
 
         // ── Overlay de pausa ─────────────────────────────────────────────────
-        if (started && isPaused && game?.winner == Winner.NONE) {
+        AnimatedVisibility(
+            visible = started && isPaused && game?.winner == Winner.NONE,
+            enter = fadeIn(tween(180)),
+            exit = fadeOut(tween(150))
+        ) {
             PauseOverlay(
                 onResume = { isPaused = false },
                 onMainMenu = {
@@ -312,12 +374,19 @@ private fun PongBoard() {
 
         // ── Overlay de fin de juego ──────────────────────────────────────────
         val currentGame = game
-        if (started && currentGame != null && currentGame.winner != Winner.NONE) {
+        AnimatedVisibility(
+            visible = started && currentGame != null && currentGame.winner != Winner.NONE,
+            enter = fadeIn(tween(400)) + scaleIn(
+                initialScale = 0.88f,
+                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)
+            ),
+            exit = fadeOut(tween(200))
+        ) {
             @Suppress("UNUSED_VARIABLE") val tick = frameTick
             GameOverOverlay(
-                winner = currentGame.winner,
-                leftScore = currentGame.leftScore,
-                rightScore = currentGame.rightScore,
+                winner = frozenWinner,
+                leftScore = frozenLeftScore,
+                rightScore = frozenRightScore,
                 onPlayAgain = { gameInitCounter++ },
                 onMainMenu = {
                     started = false
@@ -327,7 +396,14 @@ private fun PongBoard() {
         }
 
         // ── Menú de inicio ───────────────────────────────────────────────────
-        if (!started) {
+        AnimatedVisibility(
+            visible = !started,
+            enter = fadeIn(tween(300)),
+            exit = fadeOut(tween(250)) + slideOutVertically(
+                targetOffsetY = { -it / 4 },
+                animationSpec = tween(250, easing = FastOutSlowInEasing)
+            )
+        ) {
             val activity = LocalContext.current as? Activity
             Column(
                 modifier = Modifier
@@ -366,20 +442,26 @@ private fun PongBoard() {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
 
                         // Selector de dificultad (solo en 1 jugador)
-                        if (selectedGameMode == GameMode.SINGLE_PLAYER) {
-                            Text(
-                                text = "Selecciona la dificultad",
-                                color = Color.White,
-                                fontFamily = PixelFontFamily,
-                                fontSize = 18.sp,
-                                modifier = Modifier.padding(bottom = 8.dp)
-                            )
-                            DifficultySelector(
-                                selected = selectedDifficulty,
-                                onSelected = { selectedDifficulty = it },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            Spacer(modifier = Modifier.height(20.dp))
+                        AnimatedVisibility(
+                            visible = selectedGameMode == GameMode.SINGLE_PLAYER,
+                            enter = fadeIn(tween(200)) + expandVertically(tween(220, easing = FastOutSlowInEasing)),
+                            exit = fadeOut(tween(160)) + shrinkVertically(tween(180, easing = FastOutLinearInEasing))
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "Selecciona la dificultad",
+                                    color = Color.White,
+                                    fontFamily = PixelFontFamily,
+                                    fontSize = 18.sp,
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                                )
+                                DifficultySelector(
+                                    selected = selectedDifficulty,
+                                    onSelected = { selectedDifficulty = it },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Spacer(modifier = Modifier.height(20.dp))
+                            }
                         }
 
                         // Selector de puntos para ganar
@@ -410,6 +492,13 @@ private fun PongBoard() {
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     if (canStart) {
+                        val startInteraction = remember { MutableInteractionSource() }
+                        val isStartPressed by startInteraction.collectIsPressedAsState()
+                        val startScale by animateFloatAsState(
+                            targetValue = if (isStartPressed) 0.94f else 1f,
+                            animationSpec = spring(stiffness = Spring.StiffnessHigh),
+                            label = "btnScale"
+                        )
                         OutlinedButton(
                             onClick = { gameInitCounter++ },
                             border = BorderStroke(2.dp, Color.White),
@@ -418,11 +507,22 @@ private fun PongBoard() {
                                 contentColor = Color.White
                             ),
                             contentPadding = PaddingValues(vertical = 14.dp, horizontal = 20.dp),
-                            modifier = Modifier.fillMaxWidth()
+                            interactionSource = startInteraction,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .graphicsLayer { scaleX = startScale; scaleY = startScale }
                         ) {
                             Text(text = "Iniciar", fontFamily = PixelFontFamily, fontSize = 18.sp, letterSpacing = 1.5.sp)
                         }
                     }
+
+                    val menuExitInteraction = remember { MutableInteractionSource() }
+                    val isMenuExitPressed by menuExitInteraction.collectIsPressedAsState()
+                    val menuExitScale by animateFloatAsState(
+                        targetValue = if (isMenuExitPressed) 0.94f else 1f,
+                        animationSpec = spring(stiffness = Spring.StiffnessHigh),
+                        label = "btnScale"
+                    )
                     OutlinedButton(
                         onClick = { activity?.finish() },
                         border = BorderStroke(2.dp, Color.White),
@@ -431,7 +531,10 @@ private fun PongBoard() {
                             contentColor = Color.White
                         ),
                         contentPadding = PaddingValues(vertical = 14.dp, horizontal = 20.dp),
-                        modifier = Modifier.fillMaxWidth()
+                        interactionSource = menuExitInteraction,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .graphicsLayer { scaleX = menuExitScale; scaleY = menuExitScale }
                     ) {
                         Text(text = "Salir", fontFamily = PixelFontFamily, fontSize = 18.sp, letterSpacing = 1.5.sp)
                     }

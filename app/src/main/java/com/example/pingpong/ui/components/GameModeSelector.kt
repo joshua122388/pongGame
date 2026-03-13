@@ -1,14 +1,18 @@
 package com.example.pingpong.ui.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -35,10 +39,15 @@ fun GameModeSelector(
     ) {
         SELECTABLE_MODES.forEach { mode ->
             val isSel = mode == selected
+            val bgColor by animateColorAsState(
+                targetValue = if (isSel) Color(0xFF1B5E20) else Color.Transparent,
+                animationSpec = tween(200, easing = FastOutSlowInEasing),
+                label = "selectorBg"
+            )
             OutlinedButton(
                 onClick = { if (!isSel) onSelected(mode) },
                 colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = if (isSel) Color(0xFF1B5E20) else Color.Transparent,
+                    containerColor = bgColor,
                     contentColor = Color.White
                 ),
                 border = BorderStroke(2.dp, Color.White),

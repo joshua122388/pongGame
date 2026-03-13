@@ -1,7 +1,12 @@
 package com.example.pingpong.ui.components
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,9 +20,12 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -96,6 +104,13 @@ fun GameOverOverlay(
 
             Spacer(modifier = Modifier.height(8.dp))
 
+            val playAgainInteraction = remember { MutableInteractionSource() }
+            val isPlayAgainPressed by playAgainInteraction.collectIsPressedAsState()
+            val playAgainScale by animateFloatAsState(
+                targetValue = if (isPlayAgainPressed) 0.94f else 1f,
+                animationSpec = spring(stiffness = Spring.StiffnessHigh),
+                label = "btnScale"
+            )
             OutlinedButton(
                 onClick = onPlayAgain,
                 border = BorderStroke(2.dp, Color.White),
@@ -104,11 +119,21 @@ fun GameOverOverlay(
                     contentColor = Color.White
                 ),
                 contentPadding = PaddingValues(vertical = 14.dp, horizontal = 40.dp),
-                modifier = Modifier.fillMaxWidth(0.75f)
+                interactionSource = playAgainInteraction,
+                modifier = Modifier
+                    .fillMaxWidth(0.75f)
+                    .graphicsLayer { scaleX = playAgainScale; scaleY = playAgainScale }
             ) {
                 Text(text = "Jugar de Nuevo", fontFamily = PixelFontFamily, fontSize = 17.sp)
             }
 
+            val menuInteraction = remember { MutableInteractionSource() }
+            val isMenuPressed by menuInteraction.collectIsPressedAsState()
+            val menuScale by animateFloatAsState(
+                targetValue = if (isMenuPressed) 0.94f else 1f,
+                animationSpec = spring(stiffness = Spring.StiffnessHigh),
+                label = "btnScale"
+            )
             OutlinedButton(
                 onClick = onMainMenu,
                 border = BorderStroke(2.dp, Color.White),
@@ -117,7 +142,10 @@ fun GameOverOverlay(
                     contentColor = Color.White
                 ),
                 contentPadding = PaddingValues(vertical = 14.dp, horizontal = 40.dp),
-                modifier = Modifier.fillMaxWidth(0.75f)
+                interactionSource = menuInteraction,
+                modifier = Modifier
+                    .fillMaxWidth(0.75f)
+                    .graphicsLayer { scaleX = menuScale; scaleY = menuScale }
             ) {
                 Text(text = "Menú Principal", fontFamily = PixelFontFamily, fontSize = 17.sp)
             }
