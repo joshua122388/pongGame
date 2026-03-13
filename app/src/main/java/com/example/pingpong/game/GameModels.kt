@@ -31,8 +31,10 @@ class GameState(
     var boardWidth: Float,
     var boardHeight: Float,
     var difficulty: Difficulty,
+    var gameMode: GameMode = GameMode.SINGLE_PLAYER,
+    var maxScore: Int = 7,
     val paddleWidthRatio: Float = 0.02f,
-    val paddleHeightRatio: Float = 0.12f,  // Reducido de 0.18f a 0.12f para hacer el juego más jugable
+    val paddleHeightRatio: Float = 0.12f,
     val ballRadiusRatio: Float = 0.015f,
 ) {
     lateinit var leftPaddle: Paddle
@@ -41,6 +43,17 @@ class GameState(
 
     var leftScore: Int = 0
     var rightScore: Int = 0
+
+    /** Resultado de la partida; NONE mientras sigue en curso. */
+    var winner: Winner = Winner.NONE
+
+    /** Cuando es true el bucle de juego omite update(). */
+    var isPaused: Boolean = false
+
+    /** Multiplicador de velocidad acumulado por golpes consecutivos (se resetea al respawnear). */
+    private var accelerationMultiplier: Float = 1.0f
+    private val accelerationPerHit: Float = 0.05f
+    private val maxAcceleration: Float = 2.0f
 
     private val baseBallSpeed: Float
         get() = min(boardWidth, boardHeight) * 0.6f // px por segundo
@@ -81,9 +94,12 @@ class GameState(
         val ballR = min(boardWidth, boardHeight) * ballRadiusRatio
         ball = Ball(center = Offset(boardWidth / 2f, boardHeight / 2f), radius = ballR, velocity = randomInitialVelocity())
 
-        // Inicializar objetivo de IA para centrar la paleta
+        leftScore = 0
+        rightScore = 0
+        winner = Winner.NONE
+        accelerationMultiplier = 1.0f
         aiTimer = 0f
-        aiTargetY = clampPaddleY((boardHeight - rightPaddle.height) / 2f)
+        aiTargetY = clampRightPaddleY((boardHeight - rightPaddle.height) / 2f)
     }
 
     fun changeDifficulty(newDiff: Difficulty) {
@@ -100,12 +116,15 @@ class GameState(
         return y.coerceIn(0f, maxY)
     }
 
-    private fun clampRightPaddleY(y: Float): Float {
+    fun clampRightPaddleY(y: Float): Float {
         val maxY = (boardHeight - rightPaddle.height).coerceAtLeast(0f)
         return y.coerceIn(0f, maxY)
     }
 
     private fun updateAi(dtSeconds: Float) {
+        // La IA solo actúa en modo single player
+        if (gameMode != GameMode.SINGLE_PLAYER) return
+
         val params = currentAiParams()
         aiTimer -= dtSeconds
         if (aiTimer <= 0f) {
@@ -148,7 +167,7 @@ class GameState(
         val dy = ball.velocity.y * dtSeconds * speedScale
         var newCenter = ball.center.copy(x = ball.center.x + dx, y = ball.center.y + dy)
 
-        // Colisionar con superior/inferior
+        // Colisión con bordes superior/inferior
         if (newCenter.y - ball.radius < 0f) {
             newCenter = newCenter.copy(y = ball.radius)
             ball.velocity = ball.velocity.copy(y = abs(ball.velocity.y))
@@ -171,10 +190,10 @@ class GameState(
                 newCenter = newCenter.copy(x = paddleRight + ball.radius)
                 // Agregar algo de deflexión basada en dónde golpeó la paleta
                 val rel = ((newCenter.y - lp.y) / lp.height - 0.5f) * 2f // -1..1
-                val speed = max(50f, baseBallSpeed)
-                val newVx = abs(speed) // ir a la derecha
-                val newVy = rel * speed
-                ball.velocity = Offset(newVx, newVy)
+                // Aceleración: cada golpe incrementa la velocidad
+                accelerationMultiplier = (accelerationMultiplier + accelerationPerHit).coerceAtMost(maxAcceleration)
+                val speed = max(50f, baseBallSpeed * accelerationMultiplier)
+                ball.velocity = Offset(abs(speed), rel * speed)
             }
         } else if (ball.velocity.x > 0) { // Paleta derecha
             val paddleLeft = rp.x
@@ -184,10 +203,9 @@ class GameState(
             ) {
                 newCenter = newCenter.copy(x = paddleLeft - ball.radius)
                 val rel = ((newCenter.y - rp.y) / rp.height - 0.5f) * 2f // -1..1
-                val speed = max(50f, baseBallSpeed)
-                val newVx = -abs(speed) // ir a la izquierda
-                val newVy = rel * speed
-                ball.velocity = Offset(newVx, newVy)
+                accelerationMultiplier = (accelerationMultiplier + accelerationPerHit).coerceAtMost(maxAcceleration)
+                val speed = max(50f, baseBallSpeed * accelerationMultiplier)
+                ball.velocity = Offset(-abs(speed), rel * speed)
             }
         }
 
@@ -196,14 +214,26 @@ class GameState(
             // Derecha anota
             rightScore += 1
             event = ScoringEvent(Side.RIGHT)
-            respawnBall(randomDirection = true)
-            newCenter = ball.center
+            if (rightScore >= maxScore) {
+                winner = if (gameMode == GameMode.SINGLE_PLAYER) Winner.CPU else Winner.PLAYER_2
+                ball.center = Offset(boardWidth / 2f, boardHeight / 2f)
+                newCenter = ball.center
+            } else {
+                respawnBall(randomDirection = true)
+                newCenter = ball.center
+            }
         } else if (newCenter.x - ball.radius > boardWidth) {
             // Izquierda anota
             leftScore += 1
             event = ScoringEvent(Side.LEFT)
-            respawnBall(randomDirection = true)
-            newCenter = ball.center
+            if (leftScore >= maxScore) {
+                winner = Winner.PLAYER_1
+                ball.center = Offset(boardWidth / 2f, boardHeight / 2f)
+                newCenter = ball.center
+            } else {
+                respawnBall(randomDirection = true)
+                newCenter = ball.center
+            }
         }
 
         ball.center = newCenter
@@ -211,6 +241,7 @@ class GameState(
     }
 
     fun respawnBall(randomDirection: Boolean) {
+        accelerationMultiplier = 1.0f   // Resetear aceleración al respawnear
         ball.center = Offset(boardWidth / 2f, boardHeight / 2f)
         ball.velocity = if (randomDirection) randomInitialVelocity() else randomInitialVelocity(preferRight = true)
         // No resetear color aquí; la UI puede ponerlo en verde y luego de vuelta a blanco después de un corto delay.

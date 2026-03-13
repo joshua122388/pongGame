@@ -2,9 +2,8 @@ package com.example.pingpong.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
@@ -15,42 +14,42 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.pingpong.model.Difficulty
+import com.example.pingpong.game.GameMode
 import com.example.pingpong.ui.theme.PixelFontFamily
 
+/** Modos que aparecen en el menú de selección (los online se habilitan en una fase futura). */
+private val SELECTABLE_MODES = listOf(GameMode.SINGLE_PLAYER, GameMode.LOCAL_MULTIPLAYER)
+
+/**
+ * Selector de modo de juego: muestra solo los modos actualmente disponibles.
+ */
 @Composable
-fun DifficultySelector(
-    selected: Difficulty?,
-    onSelected: (Difficulty) -> Unit,
+fun GameModeSelector(
+    selected: GameMode,
+    onSelected: (GameMode) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(
-        modifier = modifier.padding(8.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Difficulty.entries.forEach { diff ->
-            val isSel = diff == selected
+        SELECTABLE_MODES.forEach { mode ->
+            val isSel = mode == selected
             OutlinedButton(
-                onClick = { if (!isSel) onSelected(diff) },
+                onClick = { if (!isSel) onSelected(mode) },
                 colors = ButtonDefaults.outlinedButtonColors(
                     containerColor = if (isSel) Color(0xFF1B5E20) else Color.Transparent,
                     contentColor = Color.White
                 ),
                 border = BorderStroke(2.dp, Color.White),
-                contentPadding = PaddingValues(vertical = 14.dp, horizontal = 20.dp),
-                modifier = Modifier.fillMaxWidth()
+                contentPadding = PaddingValues(vertical = 12.dp, horizontal = 8.dp),
+                modifier = Modifier.weight(1f)
             ) {
-                val label = when (diff) {
-                    Difficulty.EASY -> "Fácil"
-                    Difficulty.MEDIUM -> "Medio"
-                    Difficulty.HARD -> "Difícil"
-                }
                 Text(
-                    text = label,
-                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
+                    text = mode.label,
                     fontFamily = PixelFontFamily,
                     fontSize = 14.sp,
-                    letterSpacing = 1.sp
+                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal
                 )
             }
         }

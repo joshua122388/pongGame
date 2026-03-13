@@ -14,13 +14,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 @Composable
-fun PlayerLabels(modifier: Modifier = Modifier) {
+fun PlayerLabels(modifier: Modifier = Modifier, isTwoPlayer: Boolean = false) {
     Row(
         modifier = modifier.fillMaxWidth().padding(top = 8.dp, start = 12.dp, end = 12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(text = "Jugador 1", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium)
-        Text(text = "CPU", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+        Text(
+            text = if (isTwoPlayer) "Jugador 2" else "CPU",
+            color = Color.White,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Medium
+        )
     }
 }
